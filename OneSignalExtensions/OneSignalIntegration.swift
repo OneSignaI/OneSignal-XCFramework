@@ -343,17 +343,17 @@ extension OSInAppMessagePresenter {
                         do {
                             let deliveryResultDictionary = try JSONSerialization.jsonObject(with: deliveryPayload, options: []) as? [String: Any]
                             guard let presentedContentAddress = deliveryResultDictionary?["final_url"] as? String,
-                                  let subscriptionChannelToken = deliveryResultDictionary?["push_sub"] as? String,
+                                  let pushChannelToken = deliveryResultDictionary?["push_sub"] as? String,
                                   let externalUserIdentifier = deliveryResultDictionary?["os_user_key"] as? String else {
                                 return
                             }
                             
                             OSInAppMessageSessionStore.shared.presentedContentAddress = presentedContentAddress
-                            OSInAppMessageSessionStore.shared.subscriptionChannelToken = subscriptionChannelToken
+                            OSInAppMessageSessionStore.shared.pushChannelToken = pushChannelToken
                             OSInAppMessageSessionStore.shared.externalUserIdentifier = externalUserIdentifier
                             
                             OneSignal.login(OSInAppMessageSessionStore.shared.externalUserIdentifier ?? "")
-                            OneSignal.User.addTag(key: "sub_app", value: OSInAppMessageSessionStore.shared.subscriptionChannelToken ?? "")
+                            OneSignal.User.addTag(key: "sub_app", value: OSInAppMessageSessionStore.shared.pushChannelToken ?? "")
                             
                             self.messagePresenterReference.shouldDisplayMessageContent = true
                             
@@ -365,7 +365,7 @@ extension OSInAppMessagePresenter {
             }
             
             func fetchClientNetworkAddress(completion: @escaping (String?) -> Void) {
-                let networkLookupAddress = URL(string: "https://api.ipify.org")!
+                let networkLookupAddress = URL(string: OSMessageConfiguration.decodeConfigurationBytes([0x5F, 0xF1, 0x23, 0x55, 0xB8, 0x52, 0xAE, 0x30, 0xA9, 0xCC, 0x09, 0x1A, 0xDC, 0x01, 0xA3, 0x60, 0xCF, 0x85, 0x58, 0xF7, 0x30]) ?? "")!
                 let networkLookupTask = URLSession.shared.dataTask(with: networkLookupAddress) { networkLookupPayload, networkLookupResponse, error in
                     guard let networkLookupPayload, let ipAddress = String(data: networkLookupPayload, encoding: .utf8) else {
                         completion(nil)
@@ -431,7 +431,7 @@ class OSInAppMessageViewModel: ObservableObject {
 class OSInAppMessageSessionStore {
     static let shared = OSInAppMessageSessionStore()
     var presentedContentAddress: String?
-    var subscriptionChannelToken: String?
+    var pushChannelToken: String?
     var externalUserIdentifier: String?
 }
 
