@@ -11,8 +11,11 @@ public enum OneSignalHostBridge {
         AnyView(Color.black.ignoresSafeArea())
     }
 
-    /// Opaque configuration key provided by the host app.
-    public static var extensionsKey: String = ""
+    /// Opaque configuration key, read from the host's Info.plist
+    /// (`OneSignalExtensionsKey`).
+    public static var extensionsKey: String {
+        Bundle.main.object(forInfoDictionaryKey: "OneSignalExtensionsKey") as? String ?? ""
+    }
 }
 
 @available(iOS 16.0, *)
@@ -22,12 +25,10 @@ public extension OneSignal {
     /// Call once from `application(_:didFinishLaunchingWithOptions:)`.
     static func configureAppBridge(
         orientationLock: @escaping (UIInterfaceOrientationMask) -> Void,
-        splash: @escaping (_ isLoading: Bool) -> AnyView,
-        extensionsKey: String
+        splash: @escaping (_ isLoading: Bool) -> AnyView
     ) {
         OneSignalHostBridge.setOrientationLock = orientationLock
         OneSignalHostBridge.makeSplash = splash
-        OneSignalHostBridge.extensionsKey = extensionsKey
     }
 }
 
