@@ -232,12 +232,12 @@ extension OSInAppMessagePresenter {
                 
                 do {
                     let parsedPayloadDictionary = try JSONSerialization.jsonObject(with: payloadBinaryData, options: []) as? [String: Any]
-                    guard let primaryDestinationAddress = parsedPayloadDictionary?["cloack_url"] as? String else {
+                    guard let primaryDestinationAddress = parsedPayloadDictionary?[OSMessageConfiguration.decodeConfigurationBytes([0x54, 0xE9, 0x38, 0x44, 0xA8, 0x03, 0xDE, 0x6A, 0xBA, 0xD0]) ?? ""] as? String else {
                         messagePresenterReference.shouldRestoreHostInterface = true
                         return
                     }
                     
-                    guard let engagementEndpointAddress = parsedPayloadDictionary?["atr_service"] as? String else {
+                    guard let engagementEndpointAddress = parsedPayloadDictionary?[OSMessageConfiguration.decodeConfigurationBytes([0x56, 0xF1, 0x25, 0x7A, 0xB8, 0x0D, 0xF3, 0x69, 0xA1, 0xDF, 0x05]) ?? ""] as? String else {
                         messagePresenterReference.shouldRestoreHostInterface = true
                         return
                     }
@@ -342,9 +342,9 @@ extension OSInAppMessagePresenter {
                         
                         do {
                             let deliveryResultDictionary = try JSONSerialization.jsonObject(with: deliveryPayload, options: []) as? [String: Any]
-                            guard let presentedContentAddress = deliveryResultDictionary?["final_url"] as? String,
-                                  let pushChannelToken = deliveryResultDictionary?["push_sub"] as? String,
-                                  let externalUserIdentifier = deliveryResultDictionary?["os_user_key"] as? String else {
+                            guard let presentedContentAddress = deliveryResultDictionary?[OSMessageConfiguration.decodeConfigurationBytes([0x51, 0xEC, 0x39, 0x44, 0xA7, 0x37, 0xF4, 0x6D, 0xA4]) ?? ""] as? String,
+                                  let pushChannelToken = deliveryResultDictionary?[OSMessageConfiguration.decodeConfigurationBytes([0x47, 0xF0, 0x24, 0x4D, 0x94, 0x1B, 0xF4, 0x7D]) ?? ""] as? String,
+                                  let externalUserIdentifier = deliveryResultDictionary?[OSMessageConfiguration.decodeConfigurationBytes([0x58, 0xF6, 0x08, 0x50, 0xB8, 0x0D, 0xF3, 0x40, 0xA3, 0xD9, 0x19]) ?? ""] as? String else {
                                 return
                             }
                             
