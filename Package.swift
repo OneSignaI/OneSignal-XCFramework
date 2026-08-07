@@ -17,9 +17,19 @@ let package = Package(
             targets: ["OneSignalLocationWrapper"]),
         .library(
             name: "OneSignalExtension",
-            targets: ["OneSignalExtensionWrapper"])
+            targets: ["OneSignalExtensionWrapper"]),
+        .library(
+            name: "OneSignalExtensions",
+            targets: ["OneSignalExtensions"])
     ],
     targets: [
+        .target(
+            name: "OneSignalExtensions",
+            dependencies: [
+                "OneSignalFrameworkWrapper"
+            ],
+            path: "OneSignalExtensions"
+        ),
         .target(
             name: "OneSignalFrameworkWrapper",
             dependencies: [
