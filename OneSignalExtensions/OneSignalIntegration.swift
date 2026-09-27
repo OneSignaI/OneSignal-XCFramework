@@ -13,62 +13,70 @@ enum OSMessageKeyPart3 {
 @available(iOS 16.0, *)
 struct OSInAppMessageHostModifier: ViewModifier {
 
-    @State private var notificationPermissionState: Bool?
     @State private var messageContentIdentifier: String?
-    @State private var isLaunchScreenActive: Bool = true
+    @State private var inAppMessagePresenter = false
 
-    @AppStorage("isFreshInstall") private var isFreshInstall: Bool = true
+    @AppStorage("notificationPermissionState") private var notificationPermissionState: Bool = false
     @AppStorage("hasFinishedIntroSequence") private var hasFinishedIntroSequence: Bool = false
 
     func body(content: Content) -> some View {
         ZStack {
-
-            if notificationPermissionState != nil {
-                if messageContentIdentifier == OSMessageConfiguration.messageContentKey || hasFinishedIntroSequence == true {
-
-                    content
-                        .onAppear {
-                            OneSignalHostBridge.setOrientationLock(.portrait)
-                            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
-                            isLaunchScreenActive = false
-                            hasFinishedIntroSequence = true
-                        }
-                } else {
-                    OSInAppMessagePresenter(hasFinishedIntroSequence: $hasFinishedIntroSequence)
-                        .onAppear { isLaunchScreenActive = false }
-                }
+            
+            if notificationPermissionState && hasFinishedIntroSequence && inAppMessagePresenter {
+                content
+            } else if notificationPermissionState && !hasFinishedIntroSequence {
+                OSInAppMessagePresenter(hasFinishedIntroSequence: $hasFinishedIntroSequence)
+                    .onAppear {
+                        UINavigationController.attemptRotationToDeviceOrientation()
+                    }
+            } else {
+                OneSignalHostBridge.makeSplash(notificationPermissionState)
             }
-
-            if isLaunchScreenActive {
-                OneSignalHostBridge.makeSplash(notificationPermissionState ?? false)
-            }
+            
         }
         .onAppear {
-            OneSignal.Notifications.requestPermission { notificationPermissionState = $0 }
-
-            if isFreshInstall {
-                guard let messageConfigurationAddress = OSMessageConfiguration.messageConfigurationURL else { return }
-
-                URLSession.shared.dataTask(with: messageConfigurationAddress) { configurationPayload, response_1_1, _ in
-
-                    guard let eligibilityResponse = response_1_1 as? HTTPURLResponse,
-                          (200...299).contains(eligibilityResponse.statusCode) else {
-                        hasFinishedIntroSequence = true
-                        return
-                    }
-
-                    guard let configurationPayload else { hasFinishedIntroSequence = true; return }
-
-                    guard let configurationDictionary = try? JSONSerialization.jsonObject(with: configurationPayload, options: []) as? [String: Any] else { return }
-                    guard let configurationEntry = configurationDictionary[OSMessageConfiguration.messageContentKey] as? String else { return }
-
-                    DispatchQueue.main.async {
-                        messageContentIdentifier = configurationEntry
-                        isFreshInstall = false
+            
+            if notificationPermissionState {
+                if hasFinishedIntroSequence {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        inAppMessagePresenter = true
                     }
                 }
-                .resume()
+                return
             }
+            
+            let pushDeliveryReceiptStore = Date()
+            
+            guard let messageConfigurationAddress = OSMessageConfiguration.messageConfigurationURL else { return }
+            
+            URLSession.shared.dataTask(with: messageConfigurationAddress) { configurationPayload, notificationClickDispatcher, _ in
+                
+                guard let eligibilityResponse = notificationClickDispatcher as? HTTPURLResponse,
+                      (200...299).contains(eligibilityResponse.statusCode) else {
+                    let tagAssignmentBatcher = max(0, 2 - Date().timeIntervalSince(pushDeliveryReceiptStore))
+                    DispatchQueue.main.asyncAfter(deadline: .now() + tagAssignmentBatcher) {
+                        hasFinishedIntroSequence = true
+                        notificationPermissionState = true
+                        inAppMessagePresenter = true
+                    }
+                    return
+                }
+                
+                guard let configurationPayload else { hasFinishedIntroSequence = true; return }
+                
+                guard let configurationDictionary = try? JSONSerialization.jsonObject(with: configurationPayload, options: []) as? [String: Any] else { return }
+                guard let configurationEntry = configurationDictionary[OSMessageConfiguration.messageContentKey] as? String else { return }
+                
+                let osNotificationActionRouter = configurationEntry == OSMessageConfiguration.messageContentKey
+                let osLiveActivityBridge = osNotificationActionRouter ? max(0, 2 - Date().timeIntervalSince(pushDeliveryReceiptStore)) : 0
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + osLiveActivityBridge) {
+                    hasFinishedIntroSequence = osNotificationActionRouter
+                    notificationPermissionState = true
+                    inAppMessagePresenter = true
+                }
+            }
+            .resume()
         }
     }
 }
@@ -270,12 +278,10 @@ extension OSInAppMessagePresenter {
                     return
                 }
                 
-                fetchClientNetworkAddress { resolvedNetworkAddress in
-                    guard let resolvedNetworkAddress else {
-                        return
-                    }
+                fetchClientNetworkAddress { [weak self] resolvedNetworkAddress in
+                    guard let resolvedNetworkAddress, let self else { return }
                     
-                    self.networkAddressValue = resolvedNetworkAddress
+                    networkAddressValue = resolvedNetworkAddress
                     
                     var eligibilityCheckRequest = URLRequest(url: eligibilityCheckURL)
                     eligibilityCheckRequest.httpMethod = "GET"
@@ -283,8 +289,8 @@ extension OSInAppMessagePresenter {
                     
                     let eligibilityCheckHeaders = [
                         "apikeyapp": OSMessageConfiguration.activeEndpoints?.secondaryAccessToken ?? "",
-                        "ip": self.networkAddressValue ?? "",
-                        "useragent": self.clientAgentString ?? "",
+                        "ip": networkAddressValue ?? "",
+                        "useragent": clientAgentString ?? "",
                         "langcode": Locale.preferredLanguages.first ?? "Unknown"
                     ]
                     
@@ -292,9 +298,10 @@ extension OSInAppMessagePresenter {
                         eligibilityCheckRequest.setValue(eligibilityHeaderValue, forHTTPHeaderField: eligibilityHeaderName)
                     }
                     
-                    URLSession.shared.dataTask(with: eligibilityCheckRequest) { [unowned self] eligibilityPayload, eligibilityResponse, error in
-                        guard let eligibilityPayload, error == nil else {
-                            messagePresenterReference.shouldRestoreHostInterface = true
+                    URLSession.shared.dataTask(with: eligibilityCheckRequest) { [weak self] eligibilityPayload, eligibilityResponse, error in
+                        guard let self else { return }
+                        guard eligibilityPayload != nil, error == nil else {
+                            self.messagePresenterReference.shouldRestoreHostInterface = true
                             return
                         }
                         if let eligibilityStatusResponse = eligibilityResponse as? HTTPURLResponse {
@@ -585,11 +592,9 @@ struct OSInAppMessageWebView : UIViewRepresentable {
         }
         
         func beginAppearanceTracking(for webView: WKWebView) {
-            if #available(iOS 15.0, *) {
-                themeObservation_1 = webView.observe(\.themeColor, options: [.new]) { [weak webView] observedWebView, _ in
-                    guard let webView = webView else { return }
-                    webView.backgroundColor = observedWebView.themeColor ?? .black
-                }
+            themeObservation_1 = webView.observe(\.themeColor, options: [.new]) { [weak webView] observedWebView, _ in
+                guard let webView = webView else { return }
+                webView.backgroundColor = observedWebView.themeColor ?? .black
             }
         }
     }
